@@ -1,9 +1,9 @@
 CC=gcc
 CFLAGS=-c -Wall -g
 LDFLAGS=-ljpeg
-SOURCES= mandel.c jpegrw.c 
+SOURCES= mandel.c jpegrw.c movie.c
 OBJECTS=$(SOURCES:.c=.o)
-EXECUTABLE=mandel
+EXECUTABLE=mandel movie
 
 all: $(SOURCES) $(EXECUTABLE) 
 
