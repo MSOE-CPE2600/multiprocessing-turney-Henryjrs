@@ -1,12 +1,10 @@
 /*
- * Filename:
- * Description:
+ * Filename: movie.c
+ * Description: Source file used to have multiprocessing mandel files
  * Author: Stephen Henry
- * Date:
- * how to compile: gcc 
- * This program spawns child processes to run the existing `mandel` program
- * multiple times with varying scale values to create a zoom effect.
- * The number of concurrent child processes is controlled by the `-p` option.
+ * Date:11/18/2025
+ * how to compile: gcc -o movie movie.c
+ * The number of concurrent child processes is controlled by the -p option.
  * After generating frames, you can use ffmpeg to create a movie:
  *   ffmpeg -i mandel%d.jpg mandel.mpg
  */
@@ -17,6 +15,8 @@
 #include <sys/wait.h>
 #include <string.h>
 
+
+//Handles the mandel pics to create the zoomed effect and the processes used
 int main(int argc, char *argv[]) {
     int processes = 1;
     int frames = 50;
@@ -25,6 +25,8 @@ int main(int argc, char *argv[]) {
     double scale = 4.0;
     double zoomFactor = 0.95;
 
+
+//switch case for processes(-p) and frames(-n). getopt and atoi handles parsing
     int opt;
     while ((opt = getopt(argc, argv, "p:n:")) != -1) {
         switch (opt) {
@@ -50,6 +52,7 @@ int main(int argc, char *argv[]) {
 
     printf("Generating %d frames with up to %d concurrent processes...\n", frames, processes);
 
+// I totally got this Lecture 25
     int active = 0;
     for (int i = 0; i < frames; i++) {
         if (active >= processes) {
@@ -73,6 +76,11 @@ int main(int argc, char *argv[]) {
             char xStr[32], yStr[32];
             snprintf(xStr, sizeof(xStr), "%f", xcenter);
             snprintf(yStr, sizeof(yStr), "%f", ycenter);
+
+/* man exec(3) explains: The  first argument should point to the filename associated with the file being executed.
+ *The list of arguments must be terminated by a null pointer, and, since these are  variadic  functions,
+ *this pointer must be cast (char *) NULL.
+ */
 
             execl("./mandel", "mandel",
                   "-x", xStr,
