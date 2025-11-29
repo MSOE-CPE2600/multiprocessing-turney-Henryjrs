@@ -10,14 +10,40 @@
 #include <stdio.h>
 #include <unistd.h>
 #include "jpegrw.h"
+#include <pthread.h>
 
 // local routines
 static int iteration_to_color( int i, int max );
 static int iterations_at_point( double x, double y, int max );
-static void compute_image( imgRawImage *img, double xmin, double xmax,
-									double ymin, double ymax, int max );
+static void compute_image( imgRawImage *img, double xmin, double xmax, double ymin, double ymax, int max, int num_threads);
 static void show_help();
 
+//
+typedef struct {
+    int start_row;
+    int end_row;
+    int width;
+    int height;
+    int max_iterations;
+    double xmin;
+    double xmax;
+    double ymin;
+    double ymax;
+    imgRawImage *img;
+} ThreadData;
+
+void *compute_region(void *arg) {
+    ThreadData *data = (ThreadData *)arg;
+    for (int j = data->start_row; j < data->end_row; j++) {
+        for (int i = 0; i < data->width; i++) {
+            double x = data->xmin + i * (data->xmax - data->xmin) / data->width;
+            double y = data->ymin + j * (data->ymax - data->ymin) / data->height;
+            int iters = iterations_at_point(x, y, data->max_iterations);
+            setPixelCOLOR(data->img, i, j, iteration_to_color(iters, data->max_iterations));
+        }
+    }
+    pthread_exit(NULL);
+}
 
 int main( int argc, char *argv[] )
 {
@@ -33,6 +59,7 @@ int main( int argc, char *argv[] )
 	int    image_width = 1000;
 	int    image_height = 1000;
 	int    max = 1000;
+	int    num_threads = 1;
 
 	// For each command line argument given,
 	// override the appropriate configuration value.
@@ -61,6 +88,11 @@ int main( int argc, char *argv[] )
 			case 'o':
 				outfile = optarg;
 				break;
+			case 't':
+				num_threads = atoi(optarg);
+                		if (num_threads < 1) num_threads = 1;
+                		if (num_threads > 20) num_threads = 20;
+                		break;
 			case 'h':
 				show_help();
 				exit(1);
@@ -77,11 +109,16 @@ int main( int argc, char *argv[] )
 	// Create a raw image of the appropriate size.
 	imgRawImage* img = initRawImage(image_width,image_height);
 
+	//Pass num_threads to compute_image
+	compute_image(img, xcenter - xscale / 2, xcenter + xscale / 2,
+                  ycenter - yscale / 2, ycenter + yscale / 2,
+                  max, num_threads);
+
 	// Fill it with a black
-	setImageCOLOR(img,0);
+//	setImageCOLOR(img,0);
 
 	// Compute the Mandelbrot image
-	compute_image(img,xcenter-xscale/2,xcenter+xscale/2,ycenter-yscale/2,ycenter+yscale/2,max);
+	//compute_image(img,xcenter-xscale/2,xcenter+xscale/2,ycenter-yscale/2,ycenter+yscale/2,max);
 
 	// Save the image in the stated file.
 	storeJpegImageFile(img,outfile);
@@ -92,7 +129,38 @@ int main( int argc, char *argv[] )
 	return 0;
 }
 
+//compute image through threads
+void compute_image(imgRawImage *img, double xmin, double xmax, double ymin, double ymax, int max_iterations, int num_threads) {
+    pthread_t threads[num_threads];
+    ThreadData thread_data[num_threads];
 
+    int rows_per_thread = img->height / num_threads;
+    int extra_rows = img->height % num_threads;
+
+    int start_row = 0;
+    for (int t = 0; t < num_threads; t++) {
+        int end_row = start_row + rows_per_thread;
+        if (t == num_threads - 1) end_row += extra_rows;
+
+        thread_data[t].start_row = start_row;
+        thread_data[t].end_row = end_row;
+        thread_data[t].width = img->width;
+        thread_data[t].height = img->height;
+        thread_data[t].max_iterations = max_iterations;
+        thread_data[t].xmin = xmin;
+        thread_data[t].xmax = xmax;
+        thread_data[t].ymin = ymin;
+        thread_data[t].ymax = ymax;
+        thread_data[t].img = img;
+
+        pthread_create(&threads[t], NULL, compute_region, &thread_data[t]);
+        start_row = end_row;
+    }
+
+    for (int t = 0; t < num_threads; t++) {
+        pthread_join(threads[t], NULL);
+    }
+}
 
 
 /*
@@ -126,7 +194,7 @@ Compute an entire Mandelbrot image, writing each point to the given bitmap.
 Scale the image to the range (xmin-xmax,ymin-ymax), limiting iterations to "max"
 */
 
-void compute_image(imgRawImage* img, double xmin, double xmax, double ymin, double ymax, int max )
+/*void compute_image(imgRawImage* img, double xmin, double xmax, double ymin, double ymax, int max )
 {
 	int i,j;
 
@@ -151,6 +219,7 @@ void compute_image(imgRawImage* img, double xmin, double xmax, double ymin, doub
 		}
 	}
 }
+*/
 
 
 /*
@@ -177,9 +246,11 @@ void show_help()
 	printf("-W <pixels> Width of the image in pixels. (default=1000)\n");
 	printf("-H <pixels> Height of the image in pixels. (default=1000)\n");
 	printf("-o <file>   Set output file. (default=mandel.bmp)\n");
+	printf("-t <threads> Number of threads (1-20)\n");
 	printf("-h          Show this help text.\n");
 	printf("\nSome examples are:\n");
 	printf("mandel -x -0.5 -y -0.5 -s 0.2\n");
 	printf("mandel -x -.38 -y -.665 -s .05 -m 100\n");
 	printf("mandel -x 0.286932 -y 0.014287 -s .0005 -m 1000\n\n");
 }
+
